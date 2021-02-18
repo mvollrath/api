@@ -11,6 +11,7 @@ import aiohttp
 import aiohttp_cors
 
 
+
 # fetch(`http://${api_addr}/api/ls`)
 # .then((r) => { return r.text() })
 # .then((msg) => { console.log(msg) })
@@ -299,18 +300,24 @@ async def prpc_wshandler(request):
     req = a0.Packet(headers, base64.b64decode(payload))
     prpc_client.connect(req, prpc_callback)
 
-    while True:
-        pkt, done = await ns.q.get()
-        await ws.send_json({
-            "headers": pkt.headers,
-            "payload": base64.b64encode(pkt.payload).decode("utf-8"),
-        })
-        if done:
-            break
-        if scheduler == "IMMEDIATE":
-            pass
-        elif scheduler == "ON_ACK":
-            await ws.receive()
+    try:
+        while True:
+            pkt, done = await ns.q.get()
+            if ws.closed:
+                break
+            await ws.send_json({
+                "headers": pkt.headers,
+                "payload": base64.b64encode(pkt.payload).decode("utf-8"),
+            })
+            if done:
+                await ws.close()
+                break
+            if scheduler == "IMMEDIATE":
+                pass
+            elif scheduler == "ON_ACK":
+                await ws.receive()
+    finally:
+        prpc_client.cancel(req.id)
 
 
 a0.InitGlobalTopicManager({"container": "api"})
